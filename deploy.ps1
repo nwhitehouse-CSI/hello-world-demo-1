@@ -32,6 +32,15 @@ function Test-IsWindowsPowerShellDesktop {
     return $PSVersionTable.PSEdition -eq "Desktop"
 }
 
+function Convert-ToSingleQuotedPowerShellString {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Value
+    )
+
+    return "'" + ($Value -replace "'", "''") + "'"
+}
+
 function Write-DebugInfo {
     param(
         [Parameter(Mandatory = $true)]
@@ -168,25 +177,41 @@ if ((-not (Test-IsAdministrator)) -or (-not (Test-IsWindowsPowerShellDesktop))) 
 
     Write-Host ("Relaunching deploy script with {0}..." -f ($relaunchReasons -join " and "))
 
-    $argumentList = @(
-        "-NoProfile"
-        "-ExecutionPolicy", "Bypass"
-        "-File", ('"{0}"' -f $PSCommandPath)
-        "-SiteName", ('"{0}"' -f $SiteName)
-        "-AppPoolName", ('"{0}"' -f $AppPoolName)
-        "-DestinationPath", ('"{0}"' -f $DestinationPath)
-        "-Port", $Port
+    $innerArguments = @(
+        "-SiteName " + (Convert-ToSingleQuotedPowerShellString -Value $SiteName)
+        "-AppPoolName " + (Convert-ToSingleQuotedPowerShellString -Value $AppPoolName)
+        "-DestinationPath " + (Convert-ToSingleQuotedPowerShellString -Value $DestinationPath)
+        "-Port $Port"
     )
 
     if ($DebugMode) {
-        $argumentList += "-DebugMode"
+        $innerArguments += "-DebugMode"
     }
 
     if ($SkipPrerequisiteInstall) {
-        $argumentList += "-SkipPrerequisiteInstall"
+        $innerArguments += "-SkipPrerequisiteInstall"
     }
 
-    $argumentList = @("-NoExit") + $argumentList
+    $scriptPathLiteral = Convert-ToSingleQuotedPowerShellString -Value $PSCommandPath
+    $wrappedCommand = @"
+try {
+    & $scriptPathLiteral $($innerArguments -join ' ')
+}
+catch {
+    Write-Host ''
+    Write-Host 'Deployment failed in elevated window.' -ForegroundColor Yellow
+    Write-Host $_ -ForegroundColor Red
+    Read-Host 'Press Enter to close this window'
+}
+"@
+
+    $argumentList = @(
+        "-NoProfile"
+        "-ExecutionPolicy", "Bypass"
+        "-NoExit"
+        "-Command", $wrappedCommand
+    )
+
     $process = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argumentList -PassThru -Wait
     exit $process.ExitCode
 }
