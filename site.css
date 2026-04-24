@@ -1,0 +1,58 @@
+:root {
+  --bg-top: #f3f7ff;
+  --bg-bottom: #dce8ff;
+  --panel: rgba(255, 255, 255, 0.82);
+  --text: #11203b;
+  --muted: #4b5c7a;
+  --accent: #1f66ff;
+  --shadow: 0 24px 60px rgba(17, 32, 59, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top, rgba(31, 102, 255, 0.16), transparent 35%),
+    linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+}
+
+.hero {
+  width: min(680px, calc(100vw - 2rem));
+  padding: 3rem;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+}
+
+.eyebrow {
+  margin: 0 0 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(3rem, 10vw, 5.5rem);
+  line-height: 0.95;
+}
+
+.subtitle {
+  margin: 1rem auto 0;
+  max-width: 36rem;
+  font-size: 1.05rem;
+  color: var(--muted);
+}
