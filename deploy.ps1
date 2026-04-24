@@ -22,6 +22,35 @@ function Invoke-PauseForError {
     Read-Host "Press Enter to close this window"
 }
 
+function Write-ExceptionDetails {
+    param(
+        [Parameter(Mandatory = $true)]
+        $ErrorRecord
+    )
+
+    Write-Host ""
+    Write-Host "Error message:" -ForegroundColor Yellow
+    Write-Host $ErrorRecord.Exception.Message -ForegroundColor Red
+
+    if ($ErrorRecord.InvocationInfo -and $ErrorRecord.InvocationInfo.PositionMessage) {
+        Write-Host ""
+        Write-Host "Location:" -ForegroundColor Yellow
+        Write-Host $ErrorRecord.InvocationInfo.PositionMessage -ForegroundColor Red
+    }
+
+    if ($ErrorRecord.ScriptStackTrace) {
+        Write-Host ""
+        Write-Host "Stack trace:" -ForegroundColor Yellow
+        Write-Host $ErrorRecord.ScriptStackTrace -ForegroundColor Red
+    }
+
+    if ($ErrorRecord.Exception.InnerException) {
+        Write-Host ""
+        Write-Host "Inner exception:" -ForegroundColor Yellow
+        Write-Host $ErrorRecord.Exception.InnerException.Message -ForegroundColor Red
+    }
+}
+
 function Test-IsAdministrator {
     $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
@@ -200,7 +229,18 @@ try {
 catch {
     Write-Host ''
     Write-Host 'Deployment failed in elevated window.' -ForegroundColor Yellow
-    Write-Host $_ -ForegroundColor Red
+    Write-Host 'Error message:' -ForegroundColor Yellow
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    if ($_.InvocationInfo -and $_.InvocationInfo.PositionMessage) {
+        Write-Host ''
+        Write-Host 'Location:' -ForegroundColor Yellow
+        Write-Host $_.InvocationInfo.PositionMessage -ForegroundColor Red
+    }
+    if ($_.ScriptStackTrace) {
+        Write-Host ''
+        Write-Host 'Stack trace:' -ForegroundColor Yellow
+        Write-Host $_.ScriptStackTrace -ForegroundColor Red
+    }
     Read-Host 'Press Enter to close this window'
 }
 "@
@@ -285,6 +325,7 @@ try {
 catch {
     Write-Error $_
     if ($script:PauseOnError) {
+        Write-ExceptionDetails -ErrorRecord $_
         Invoke-PauseForError -Message "Deployment failed."
     }
     throw
