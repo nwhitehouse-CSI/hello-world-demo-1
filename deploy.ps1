@@ -16,6 +16,10 @@ function Test-IsAdministrator {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Test-IsWindowsPowerShellDesktop {
+    return $PSVersionTable.PSEdition -eq "Desktop"
+}
+
 function Write-DebugInfo {
     param(
         [Parameter(Mandatory = $true)]
@@ -139,8 +143,18 @@ Install-WindowsFeature Web-Scripting-Tools
     }
 }
 
-if (-not (Test-IsAdministrator)) {
-    Write-Host "Elevation required. Relaunching deploy script as Administrator..."
+if ((-not (Test-IsAdministrator)) -or (-not (Test-IsWindowsPowerShellDesktop))) {
+    $relaunchReasons = @()
+
+    if (-not (Test-IsAdministrator)) {
+        $relaunchReasons += "administrator privileges"
+    }
+
+    if (-not (Test-IsWindowsPowerShellDesktop)) {
+        $relaunchReasons += "Windows PowerShell"
+    }
+
+    Write-Host ("Relaunching deploy script with {0}..." -f ($relaunchReasons -join " and "))
 
     $argumentList = @(
         "-NoProfile"
@@ -164,7 +178,7 @@ if (-not (Test-IsAdministrator)) {
     exit $process.ExitCode
 }
 
-Write-DebugInfo "Running as administrator"
+Write-DebugInfo "Running as administrator in Windows PowerShell $($PSVersionTable.PSVersion)"
 Initialize-IISAdministration
 
 $sourcePath = Split-Path -Parent $MyInvocation.MyCommand.Path
