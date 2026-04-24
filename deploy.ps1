@@ -15,7 +15,20 @@ function Test-IsAdministrator {
 }
 
 if (-not (Test-IsAdministrator)) {
-    throw "Run this script from an elevated PowerShell session."
+    Write-Host "Elevation required. Relaunching deploy script as Administrator..."
+
+    $argumentList = @(
+        "-NoProfile"
+        "-ExecutionPolicy", "Bypass"
+        "-File", ('"{0}"' -f $PSCommandPath)
+        "-SiteName", ('"{0}"' -f $SiteName)
+        "-AppPoolName", ('"{0}"' -f $AppPoolName)
+        "-DestinationPath", ('"{0}"' -f $DestinationPath)
+        "-Port", $Port
+    )
+
+    $process = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argumentList -PassThru -Wait
+    exit $process.ExitCode
 }
 
 Import-Module WebAdministration -ErrorAction Stop
