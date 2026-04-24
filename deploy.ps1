@@ -230,16 +230,16 @@ catch {
     Write-Host ''
     Write-Host 'Deployment failed in elevated window.' -ForegroundColor Yellow
     Write-Host 'Error message:' -ForegroundColor Yellow
-    Write-Host $_.Exception.Message -ForegroundColor Red
-    if ($_.InvocationInfo -and $_.InvocationInfo.PositionMessage) {
+    Write-Host `$_.Exception.Message -ForegroundColor Red
+    if (`$_.InvocationInfo -and `$_.InvocationInfo.PositionMessage) {
         Write-Host ''
         Write-Host 'Location:' -ForegroundColor Yellow
-        Write-Host $_.InvocationInfo.PositionMessage -ForegroundColor Red
+        Write-Host `$_.InvocationInfo.PositionMessage -ForegroundColor Red
     }
-    if ($_.ScriptStackTrace) {
+    if (`$_.ScriptStackTrace) {
         Write-Host ''
         Write-Host 'Stack trace:' -ForegroundColor Yellow
-        Write-Host $_.ScriptStackTrace -ForegroundColor Red
+        Write-Host `$_.ScriptStackTrace -ForegroundColor Red
     }
     Read-Host 'Press Enter to close this window'
 }
