@@ -81,6 +81,19 @@ function Write-DebugInfo {
     }
 }
 
+function Invoke-DebugStep {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Description,
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Action
+    )
+
+    Write-DebugInfo "Starting: $Description"
+    & $Action
+    Write-DebugInfo "Completed: $Description"
+}
+
 function Install-IISPrerequisites {
     Write-DebugInfo "Checking IIS prerequisite installation state"
 
@@ -283,40 +296,69 @@ try {
     Write-Host "Port             : $Port"
     Write-DebugInfo "IIS PSDrive available: $([bool](Get-PSDrive -Name 'IIS' -ErrorAction SilentlyContinue))"
 
-    if (-not (Test-Path -LiteralPath $DestinationPath)) {
-        New-Item -ItemType Directory -Path $DestinationPath -Force | Out-Null
+    Invoke-DebugStep -Description "Ensure destination folder exists" -Action {
+        if (-not (Test-Path -LiteralPath $DestinationPath)) {
+            New-Item -ItemType Directory -Path $DestinationPath -Force | Out-Null
+        }
     }
 
-    Copy-Item -Path (Join-Path $sourcePath "*") -Destination $DestinationPath -Recurse -Force
-
-    if (-not (Test-Path "IIS:\AppPools\$AppPoolName")) {
-        New-WebAppPool -Name $AppPoolName | Out-Null
+    Invoke-DebugStep -Description "Copy site files to destination" -Action {
+        Copy-Item -Path (Join-Path $sourcePath "*") -Destination $DestinationPath -Recurse -Force
     }
 
-    Set-ItemProperty "IIS:\AppPools\$AppPoolName" -Name managedRuntimeVersion -Value ""
-    Set-ItemProperty "IIS:\AppPools\$AppPoolName" -Name processModel.identityType -Value "ApplicationPoolIdentity"
+    Invoke-DebugStep -Description "Ensure IIS app pool exists" -Action {
+        if (-not (Test-Path "IIS:\AppPools\$AppPoolName")) {
+            New-WebAppPool -Name $AppPoolName | Out-Null
+        }
+    }
 
-    $existingSite = Get-Website -Name $SiteName -ErrorAction SilentlyContinue
+    Invoke-DebugStep -Description "Set app pool runtime" -Action {
+        Set-ItemProperty "IIS:\AppPools\$AppPoolName" -Name managedRuntimeVersion -Value ""
+    }
+
+    Invoke-DebugStep -Description "Set app pool identity" -Action {
+        Set-ItemProperty "IIS:\AppPools\$AppPoolName" -Name processModel.identityType -Value "ApplicationPoolIdentity"
+    }
+
+    $existingSite = $null
+    Invoke-DebugStep -Description "Lookup existing IIS site" -Action {
+        $script:existingSiteLookup = Get-Website -Name $SiteName -ErrorAction SilentlyContinue
+    }
+    $existingSite = $script:existingSiteLookup
 
     if ($existingSite) {
-        Stop-Website -Name $SiteName
-        Set-ItemProperty "IIS:\Sites\$SiteName" -Name applicationPool -Value $AppPoolName
-        Set-ItemProperty "IIS:\Sites\$SiteName" -Name physicalPath -Value $DestinationPath
+        Invoke-DebugStep -Description "Stop existing IIS site" -Action {
+            Stop-Website -Name $SiteName
+        }
+        Invoke-DebugStep -Description "Assign app pool to existing IIS site" -Action {
+            Set-ItemProperty "IIS:\Sites\$SiteName" -Name applicationPool -Value $AppPoolName
+        }
+        Invoke-DebugStep -Description "Update existing IIS site physical path" -Action {
+            Set-ItemProperty "IIS:\Sites\$SiteName" -Name physicalPath -Value $DestinationPath
+        }
 
-        Get-WebBinding -Name $SiteName -Protocol "http" -ErrorAction SilentlyContinue |
-            Remove-WebBinding
+        Invoke-DebugStep -Description "Remove existing HTTP bindings" -Action {
+            Get-WebBinding -Name $SiteName -Protocol "http" -ErrorAction SilentlyContinue |
+                Remove-WebBinding
+        }
 
-        New-WebBinding -Name $SiteName -Protocol "http" -Port $Port -IPAddress "*" -HostHeader "" | Out-Null
+        Invoke-DebugStep -Description "Create HTTP binding on port $Port" -Action {
+            New-WebBinding -Name $SiteName -Protocol "http" -Port $Port -IPAddress "*" -HostHeader "" | Out-Null
+        }
     }
     else {
-        New-Website -Name $SiteName `
-            -Port $Port `
-            -IPAddress "*" `
-            -PhysicalPath $DestinationPath `
-            -ApplicationPool $AppPoolName | Out-Null
+        Invoke-DebugStep -Description "Create IIS website" -Action {
+            New-Website -Name $SiteName `
+                -Port $Port `
+                -IPAddress "*" `
+                -PhysicalPath $DestinationPath `
+                -ApplicationPool $AppPoolName | Out-Null
+        }
     }
 
-    Start-Website -Name $SiteName
+    Invoke-DebugStep -Description "Start IIS website" -Action {
+        Start-Website -Name $SiteName
+    }
 
     Write-Host ""
     Write-Host "Deployment complete."
