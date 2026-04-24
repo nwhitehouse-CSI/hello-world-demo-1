@@ -306,10 +306,24 @@ try {
         Copy-Item -Path (Join-Path $sourcePath "*") -Destination $DestinationPath -Recurse -Force
     }
 
-    Invoke-DebugStep -Description "Ensure IIS app pool exists" -Action {
-        if (-not (Test-Path "IIS:\AppPools\$AppPoolName")) {
-            New-WebAppPool -Name $AppPoolName | Out-Null
+    Invoke-DebugStep -Description "Remove existing IIS website if present" -Action {
+        if (Get-Website -Name $SiteName -ErrorAction SilentlyContinue) {
+            Stop-Website -Name $SiteName -ErrorAction SilentlyContinue
+            Remove-Website -Name $SiteName
         }
+    }
+
+    Invoke-DebugStep -Description "Remove existing IIS app pool if present" -Action {
+        if (Test-Path "IIS:\AppPools\$AppPoolName") {
+            if (Get-Website | Where-Object { $_.ApplicationPool -eq $AppPoolName }) {
+                throw "App pool '$AppPoolName' is still assigned to an IIS site after website removal."
+            }
+            Remove-WebAppPool -Name $AppPoolName
+        }
+    }
+
+    Invoke-DebugStep -Description "Create IIS app pool" -Action {
+        New-WebAppPool -Name $AppPoolName | Out-Null
     }
 
     Invoke-DebugStep -Description "Set app pool runtime" -Action {
@@ -320,40 +334,12 @@ try {
         Set-ItemProperty "IIS:\AppPools\$AppPoolName" -Name processModel.identityType -Value "ApplicationPoolIdentity"
     }
 
-    $existingSite = $null
-    Invoke-DebugStep -Description "Lookup existing IIS site" -Action {
-        $script:existingSiteLookup = Get-Website -Name $SiteName -ErrorAction SilentlyContinue
-    }
-    $existingSite = $script:existingSiteLookup
-
-    if ($existingSite) {
-        Invoke-DebugStep -Description "Stop existing IIS site" -Action {
-            Stop-Website -Name $SiteName
-        }
-        Invoke-DebugStep -Description "Assign app pool to existing IIS site" -Action {
-            Set-ItemProperty "IIS:\Sites\$SiteName" -Name applicationPool -Value $AppPoolName
-        }
-        Invoke-DebugStep -Description "Update existing IIS site physical path" -Action {
-            Set-ItemProperty "IIS:\Sites\$SiteName" -Name physicalPath -Value $DestinationPath
-        }
-
-        Invoke-DebugStep -Description "Remove existing HTTP bindings" -Action {
-            Get-WebBinding -Name $SiteName -Protocol "http" -ErrorAction SilentlyContinue |
-                Remove-WebBinding
-        }
-
-        Invoke-DebugStep -Description "Create HTTP binding on port $Port" -Action {
-            New-WebBinding -Name $SiteName -Protocol "http" -Port $Port -IPAddress "*" -HostHeader "" | Out-Null
-        }
-    }
-    else {
-        Invoke-DebugStep -Description "Create IIS website" -Action {
-            New-Website -Name $SiteName `
-                -Port $Port `
-                -IPAddress "*" `
-                -PhysicalPath $DestinationPath `
-                -ApplicationPool $AppPoolName | Out-Null
-        }
+    Invoke-DebugStep -Description "Create IIS website" -Action {
+        New-Website -Name $SiteName `
+            -Port $Port `
+            -IPAddress "*" `
+            -PhysicalPath $DestinationPath `
+            -ApplicationPool $AppPoolName | Out-Null
     }
 
     Invoke-DebugStep -Description "Start IIS website" -Action {
