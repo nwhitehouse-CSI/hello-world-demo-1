@@ -33,6 +33,10 @@ if (-not (Test-IsAdministrator)) {
 
 Import-Module WebAdministration -ErrorAction Stop
 
+if (-not (Get-PSDrive -Name "IIS" -ErrorAction SilentlyContinue)) {
+    New-PSDrive -Name "IIS" -PSProvider "WebAdministration" -Root "\" | Out-Null
+}
+
 $sourcePath = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $sourcePath) {
     throw "Unable to determine the source path for deployment files."
