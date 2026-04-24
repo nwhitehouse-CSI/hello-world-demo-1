@@ -14,12 +14,13 @@ This repository contains a minimal static "Hello World" website and a PowerShell
 `deploy.ps1` performs the full IIS setup:
 
 1. Verifies the script is running in an elevated PowerShell session.
-2. Imports the IIS PowerShell module (`WebAdministration`).
-3. Copies the site files into `C:\inetpub\wwwroot\HelloWorldDemo`.
-4. Creates or updates an IIS application pool named `HelloWorldDemoPool`.
-5. Creates or updates an IIS website named `HelloWorldDemo`.
-6. Configures the site to listen on HTTP port `8080`.
-7. Starts the IIS website.
+2. Checks for IIS management prerequisites and installs them automatically when missing.
+3. Imports the IIS PowerShell module (`WebAdministration`).
+4. Copies the site files into `C:\inetpub\wwwroot\HelloWorldDemo`.
+5. Creates or updates an IIS application pool named `HelloWorldDemoPool`.
+6. Creates or updates an IIS website named `HelloWorldDemo`.
+7. Configures the site to listen on HTTP port `8080`.
+8. Starts the IIS website.
 
 ## Usage
 
@@ -67,6 +68,18 @@ You can override the defaults if needed:
 
 ```powershell
 .\deploy.ps1 -SiteName "HelloWorldDemo" -AppPoolName "HelloWorldDemoPool" -DestinationPath "C:\inetpub\wwwroot\HelloWorldDemo" -Port 8080
+```
+
+Enable diagnostic output:
+
+```powershell
+.\deploy.ps1 -DebugMode
+```
+
+Skip automatic prerequisite installation and fail fast instead:
+
+```powershell
+.\deploy.ps1 -SkipPrerequisiteInstall
 ```
 
 ## IIS prerequisites
