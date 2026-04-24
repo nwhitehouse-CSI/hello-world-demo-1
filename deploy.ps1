@@ -9,6 +9,18 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$script:PauseOnError = $false
+
+function Invoke-PauseForError {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    Write-Host ""
+    Write-Host $Message -ForegroundColor Yellow
+    Read-Host "Press Enter to close this window"
+}
 
 function Test-IsAdministrator {
     $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -174,67 +186,81 @@ if ((-not (Test-IsAdministrator)) -or (-not (Test-IsWindowsPowerShellDesktop))) 
         $argumentList += "-SkipPrerequisiteInstall"
     }
 
+    $argumentList = @("-NoExit") + $argumentList
     $process = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argumentList -PassThru -Wait
     exit $process.ExitCode
 }
 
-Write-DebugInfo "Running as administrator in Windows PowerShell $($PSVersionTable.PSVersion)"
-Initialize-IISAdministration
-
-$sourcePath = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $sourcePath) {
-    throw "Unable to determine the source path for deployment files."
+if (Test-IsWindowsPowerShellDesktop) {
+    $script:PauseOnError = $true
 }
 
-$requiredFiles = @("index.html", "site.css")
-foreach ($file in $requiredFiles) {
-    $fullPath = Join-Path $sourcePath $file
-    if (-not (Test-Path -LiteralPath $fullPath)) {
-        throw "Required file not found: $fullPath"
+try {
+    Write-DebugInfo "Running as administrator in Windows PowerShell $($PSVersionTable.PSVersion)"
+    Initialize-IISAdministration
+
+    $sourcePath = Split-Path -Parent $MyInvocation.MyCommand.Path
+    if (-not $sourcePath) {
+        throw "Unable to determine the source path for deployment files."
     }
+
+    $requiredFiles = @("index.html", "site.css")
+    foreach ($file in $requiredFiles) {
+        $fullPath = Join-Path $sourcePath $file
+        if (-not (Test-Path -LiteralPath $fullPath)) {
+            throw "Required file not found: $fullPath"
+        }
+    }
+
+    Write-Host "Deploying '$SiteName' to IIS..."
+    Write-Host "Source path      : $sourcePath"
+    Write-Host "Destination path : $DestinationPath"
+    Write-Host "Port             : $Port"
+    Write-DebugInfo "IIS PSDrive available: $([bool](Get-PSDrive -Name 'IIS' -ErrorAction SilentlyContinue))"
+
+    if (-not (Test-Path -LiteralPath $DestinationPath)) {
+        New-Item -ItemType Directory -Path $DestinationPath -Force | Out-Null
+    }
+
+    Copy-Item -Path (Join-Path $sourcePath "*") -Destination $DestinationPath -Recurse -Force
+
+    if (-not (Test-Path "IIS:\AppPools\$AppPoolName")) {
+        New-WebAppPool -Name $AppPoolName | Out-Null
+    }
+
+    Set-ItemProperty "IIS:\AppPools\$AppPoolName" -Name managedRuntimeVersion -Value ""
+    Set-ItemProperty "IIS:\AppPools\$AppPoolName" -Name processModel.identityType -Value "ApplicationPoolIdentity"
+
+    $existingSite = Get-Website -Name $SiteName -ErrorAction SilentlyContinue
+
+    if ($existingSite) {
+        Stop-Website -Name $SiteName
+        Set-ItemProperty "IIS:\Sites\$SiteName" -Name applicationPool -Value $AppPoolName
+        Set-ItemProperty "IIS:\Sites\$SiteName" -Name physicalPath -Value $DestinationPath
+
+        Get-WebBinding -Name $SiteName -Protocol "http" -ErrorAction SilentlyContinue |
+            Remove-WebBinding
+
+        New-WebBinding -Name $SiteName -Protocol "http" -Port $Port -IPAddress "*" -HostHeader "" | Out-Null
+    }
+    else {
+        New-Website -Name $SiteName `
+            -Port $Port `
+            -IPAddress "*" `
+            -PhysicalPath $DestinationPath `
+            -ApplicationPool $AppPoolName | Out-Null
+    }
+
+    Start-Website -Name $SiteName
+
+    Write-Host ""
+    Write-Host "Deployment complete."
+    Write-Host "Browse to: http://localhost:$Port/"
 }
-
-Write-Host "Deploying '$SiteName' to IIS..."
-Write-Host "Source path      : $sourcePath"
-Write-Host "Destination path : $DestinationPath"
-Write-Host "Port             : $Port"
-Write-DebugInfo "IIS PSDrive available: $([bool](Get-PSDrive -Name 'IIS' -ErrorAction SilentlyContinue))"
-
-if (-not (Test-Path -LiteralPath $DestinationPath)) {
-    New-Item -ItemType Directory -Path $DestinationPath -Force | Out-Null
+catch {
+    Write-Error $_
+    if ($script:PauseOnError) {
+        Invoke-PauseForError -Message "Deployment failed."
+    }
+    throw
 }
-
-Copy-Item -Path (Join-Path $sourcePath "*") -Destination $DestinationPath -Recurse -Force
-
-if (-not (Test-Path "IIS:\AppPools\$AppPoolName")) {
-    New-WebAppPool -Name $AppPoolName | Out-Null
-}
-
-Set-ItemProperty "IIS:\AppPools\$AppPoolName" -Name managedRuntimeVersion -Value ""
-Set-ItemProperty "IIS:\AppPools\$AppPoolName" -Name processModel.identityType -Value "ApplicationPoolIdentity"
-
-$existingSite = Get-Website -Name $SiteName -ErrorAction SilentlyContinue
-
-if ($existingSite) {
-    Stop-Website -Name $SiteName
-    Set-ItemProperty "IIS:\Sites\$SiteName" -Name applicationPool -Value $AppPoolName
-    Set-ItemProperty "IIS:\Sites\$SiteName" -Name physicalPath -Value $DestinationPath
-
-    Get-WebBinding -Name $SiteName -Protocol "http" -ErrorAction SilentlyContinue |
-        Remove-WebBinding
-
-    New-WebBinding -Name $SiteName -Protocol "http" -Port $Port -IPAddress "*" -HostHeader "" | Out-Null
-}
-else {
-    New-Website -Name $SiteName `
-        -Port $Port `
-        -IPAddress "*" `
-        -PhysicalPath $DestinationPath `
-        -ApplicationPool $AppPoolName | Out-Null
-}
-
-Start-Website -Name $SiteName
-
-Write-Host ""
-Write-Host "Deployment complete."
-Write-Host "Browse to: http://localhost:$Port/"
