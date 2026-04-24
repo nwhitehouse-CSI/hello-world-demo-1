@@ -43,7 +43,28 @@ function Install-IISPrerequisites {
     $serverManager = Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue
     if ($serverManager) {
         Write-DebugInfo "Installing IIS prerequisites with Install-WindowsFeature"
-        Install-WindowsFeature -Name Web-Server,Web-Scripting-Tools -IncludeManagementTools | Out-Null
+        $result = Install-WindowsFeature -Name Web-Server,Web-Scripting-Tools -IncludeManagementTools
+        Write-DebugInfo "Install-WindowsFeature Success=$($result.Success) RestartNeeded=$($result.RestartNeeded) ExitCode=$($result.ExitCode)"
+
+        if (-not $result.Success) {
+            throw @"
+Failed to install IIS prerequisites with Install-WindowsFeature.
+ExitCode: $($result.ExitCode)
+RestartNeeded: $($result.RestartNeeded)
+
+Install-WindowsFeature did not report success. Check Server Manager / feature installation logs on the server.
+"@
+        }
+
+        if ($result.RestartNeeded -and $result.RestartNeeded -ne "No") {
+            throw @"
+IIS prerequisites were installed, but Windows reported that a restart is required before PowerShell can use them.
+
+Restart the server, then rerun:
+.\deploy.ps1 -DebugMode
+"@
+        }
+
         return
     }
 
@@ -56,7 +77,17 @@ function Install-IISPrerequisites {
         )
 
         foreach ($featureName in $featureNames) {
-            Enable-WindowsOptionalFeature -Online -FeatureName $featureName -All -NoRestart | Out-Null
+            $featureResult = Enable-WindowsOptionalFeature -Online -FeatureName $featureName -All -NoRestart
+            Write-DebugInfo "Enable-WindowsOptionalFeature $featureName RestartNeeded=$($featureResult.RestartNeeded) State=$($featureResult.State)"
+
+            if ($featureResult.RestartNeeded) {
+                throw @"
+Windows enabled IIS feature '$featureName', but a restart is required before deployment can continue.
+
+Restart the machine, then rerun:
+.\deploy.ps1 -DebugMode
+"@
+            }
         }
         return
     }
@@ -77,11 +108,14 @@ function Initialize-IISAdministration {
         throw @"
 The PowerShell module 'WebAdministration' is not available on this server.
 
-Install the IIS management scripting components, then rerun the script. On Windows Server:
-Install-WindowsFeature Web-Scripting-Tools
+The prerequisite installation step completed, but the module is still missing in the current OS state.
 
-If IIS itself is not installed yet, install it with the management tools:
-Install-WindowsFeature Web-Server,Web-Scripting-Tools
+Verify these commands on the server:
+Get-WindowsFeature Web-Server,Web-Scripting-Tools
+Get-Module -ListAvailable WebAdministration
+
+If the feature install reports RestartNeeded, reboot the server and rerun:
+.\deploy.ps1 -DebugMode
 "@
     }
 
